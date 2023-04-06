@@ -1,0 +1,6 @@
+.idea
+node_modules
+.swc
+.next
+next-env.d.ts
+.env
