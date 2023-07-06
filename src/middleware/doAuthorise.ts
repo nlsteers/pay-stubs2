@@ -17,10 +17,10 @@ const validateBasicAuth = (authObject: basicAuthObject): boolean => {
 
 const decodeAuthHeader = (authHeader: string): basicAuthObject => {
   if (authHeader !== undefined) {
-    let parts = authHeader.split(" ")
+    const parts = authHeader.split(" ")
     if (parts.at(0) === "Basic") {
       try {
-        let authParts = Buffer.from(parts.at(1)!, 'base64').toString().split(":")
+        const authParts = Buffer.from(parts.at(1)!, 'base64').toString().split(":")
         return {
           username: authParts.at(0)!,
           password: authParts.at(1)!
@@ -36,13 +36,13 @@ const decodeAuthHeader = (authHeader: string): basicAuthObject => {
   }
 }
 
-const doAuthorise = (handler: Function) => {
+const doAuthorise = (handler: ((req: NextApiRequest, res: NextApiResponse) => void)) => {
   return async (req: NextApiRequest , res: NextApiResponse) => {
     // get auth headers
     // if present and if match return handler
     // else return 401
     try {
-      let authObject = decodeAuthHeader(req.headers["authorization"]!)
+      const authObject = decodeAuthHeader(req.headers["authorization"]!)
       if (validateBasicAuth(authObject)) {
         return handler(req, res)
       } else {

@@ -23,7 +23,6 @@ const Stubs = (props: StubsProps) => {
         </main>
       </div>
     </div>
-
   )
 }
 

@@ -1,19 +1,10 @@
 import type {NextApiRequest, NextApiResponse} from "next"
-import { create } from "xmlbuilder2"
-import { XMLParser, XMLValidator} from "fast-xml-parser"
+import {XMLParser, XMLValidator} from "fast-xml-parser"
 import doAuthorise from "../../../middleware/doAuthorise"
 import findValueByKey from "../../../util/findValueByKey"
-import starCardNumbers from "../../../util/starCardNumbers";
-
-type requestDetails = {
-  getType: Function,
-  transactionID: string,
-  amount: number,
-  version: number,
-  merchantCode: string,
-  cardNumber: string,
-  cardHolderName: string
-}
+import {authOrderResponse, captureOrderResponse, threeDSecureRequiredResponse} from "../../../util/responses/worldpay"
+import type {WorldpayRequestDetails} from "../../../util/types/worldpay"
+import sendMessageToQueue from "../../../util/sendMessageToQueue"
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -30,9 +21,9 @@ const REQUEST_TYPE = {
   CAPTURE_ORDER: "capture"
 }
 
-const determineRequestDetails = (parsedRequestBody: any): requestDetails => {
+const determineRequestDetails = (parsedRequestBody: any): WorldpayRequestDetails => {
   delete parsedRequestBody['?xml']
-  console.dir(parsedRequestBody, { depth: null })
+  // console.dir(parsedRequestBody, {depth: null})
   return {
     getType: () => {
       if (findValueByKey(parsedRequestBody, "paResponse")) return REQUEST_TYPE.AUTH_3DS_AUTHORISED_ORDER
@@ -42,77 +33,68 @@ const determineRequestDetails = (parsedRequestBody: any): requestDetails => {
       if (findValueByKey(parsedRequestBody, "capture")) return REQUEST_TYPE.CAPTURE_ORDER
       return REQUEST_TYPE.UNKNOWN
     },
-    transactionID: findValueByKey(parsedRequestBody, "@_orderCode"),
+    orderCode: findValueByKey(parsedRequestBody, "@_orderCode"),
+    merchantCode: findValueByKey(parsedRequestBody, "@_merchantCode"),
     amount: findValueByKey(parsedRequestBody, "@_value"),
     version: findValueByKey(parsedRequestBody, "@_version"),
-    merchantCode: findValueByKey(parsedRequestBody, "@_merchantCode"),
-    cardNumber: String(findValueByKey(parsedRequestBody, "cardNumber")),
-    cardHolderName: findValueByKey(parsedRequestBody, "cardHolderName")
+    paymentDetails: findValueByKey(parsedRequestBody, "paymentDetails")
   }
 }
 
-const buildXMLResponse = (requestDetails: requestDetails, res: NextApiResponse) => {
-  switch(requestDetails.getType()) {
+const buildXMLResponse = async (requestDetails: WorldpayRequestDetails, res: NextApiResponse) => {
+
+  switch (requestDetails.getType()) {
     case REQUEST_TYPE.AUTH_ORDER:
-
-      const root = create({ version: "1.0", encoding: "UTF-8" })
-        .dtd({
-          "pubID": "-//WorldPay//DTD WorldPay PaymentService v1//EN",
-          "sysID": "http://dtd.worldpay.com/paymentService_v1.dtd"
-        })
-        .ele("paymentService", { version: requestDetails.version, merchantCode: requestDetails.merchantCode })
-        .ele("reply")
-        .ele("orderStatus", { orderCode: requestDetails.transactionID })
-        .ele("payment")
-        .ele("paymentMethod").txt("VISA-SSL").up()
-        .ele("paymentMethodDetail")
-        .ele("card", { number: starCardNumbers(requestDetails.cardNumber), type: "creditcard" })
-        .ele("expiryDate")
-        .ele("date", { month: "blah", year: "blah" }).up()
-        .up()
-        .up()
-        .up()
-        .ele("amount", { value: requestDetails.amount, currencyCode: "GBP", exponent: "2", debitCreditIndicator: "credit"}).up()
-        .ele("lastEvent").txt("AUTHORISED").up()
-        .ele("AuthorisationId", { id: "666" }).up()
-        .ele("CVCResultCode", { description: "NOT SENT TO ACQUIRER" }).up()
-        .ele("AVSResultCode", { description: "NOT SENT TO ACQUIRER" }).up()
-        .ele("cardHolderName")
-        .dat(requestDetails.cardHolderName).up()
-        .ele("issuerCountryCode").txt("N/A").up()
-        .ele("balance", { accountType: "IN_PROCESS_AUTHORISED" })
-        .ele("amount", { value: requestDetails.amount, currencyCode: "GBP", exponent: "2", debitCreditIndicator: "credit"}).up()
-        .up()
-        .ele("riskScore", { value: "51" }).up()
-        .ele("cardNumber").txt( starCardNumbers(requestDetails.cardNumber) )
-
-      const xml = root.end({ prettyPrint: true })
-
+      console.log("AUTH_ORDER")
       res
         .status(200)
         .setHeader('Content-Type', 'text/xml')
-        .send(xml)
-      break;
+        .send(authOrderResponse(requestDetails))
+      break
     case REQUEST_TYPE.CAPTURE_ORDER:
+      console.log("CAPTURE_ORDER")
       // reply with capture confirm
+      res
+        .status(200)
+        .setHeader('Content-Type', 'text/xml')
+        .send(captureOrderResponse(requestDetails))
       // add capture notification to queue
-      res.status(200).json({ message: requestDetails, type: requestDetails.getType() })
-      break;
+      const messageBody = {
+        orderCode: requestDetails.orderCode,
+        merchantCode: requestDetails.merchantCode,
+        amount: requestDetails.amount
+      }
+      await sendMessageToQueue(messageBody)
+      break
+    case REQUEST_TYPE.AUTH_3DS_REQUIRED_ORDER:
+      console.log("AUTH_3DS_REQUIRED_ORDER")
+      res
+        .status(200)
+        .setHeader('Content-Type', 'text/xml')
+        .send(threeDSecureRequiredResponse(requestDetails))
+      break
+    case REQUEST_TYPE.AUTH_3DS_AUTHORISED_ORDER:
+      console.log("AUTH_3DS_AUTHORISED_ORDER")
+      res.status(501).json({ response: 'not implemented' })
+      break
+    case REQUEST_TYPE.REFUND_ORDER:
+      console.log("REFUND_ORDER")
+      res.status(501).json({ response: 'not implemented' })
+      break
     default:
-      res.status(400).json({ message: "Unknown request type" })
+      res.status(400).json({message: "Unknown request type"})
   }
 }
 
-const handler = (req: NextApiRequest, res: NextApiResponse) => {
+const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   // construct response
   // add capture confirmed notification to queue if capture submission
-
-  if (XMLValidator.validate(req.body, { allowBooleanAttributes: true })) {
+  if (XMLValidator.validate(req.body, {allowBooleanAttributes: true})) {
     const parsedRequestBody = parser.parse(req.body)
     const requestDetails = determineRequestDetails(parsedRequestBody)
-    buildXMLResponse(requestDetails, res)
+    await buildXMLResponse(requestDetails, res)
   } else {
-    res.status(400).json({ message: "XML error" })
+    res.status(400).json({message: "XML error"})
   }
 }
 
