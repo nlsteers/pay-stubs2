@@ -5,3 +5,8 @@ $govuk-fonts-path: "/fonts/";
 body {
   margin: 0;
 }
+
+.error-message {
+  font-weight: $govuk-font-weight-bold;
+  color: $govuk-error-colour;
+}

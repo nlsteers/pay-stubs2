@@ -1,10 +1,10 @@
 import type {NextApiRequest, NextApiResponse} from "next"
-import {XMLParser, XMLValidator} from "fast-xml-parser"
+import {XMLParser} from "fast-xml-parser"
 import doAuthorise from "../../../middleware/doAuthorise"
 import findValueByKey from "../../../util/findValueByKey"
 import {authOrderResponse, captureOrderResponse, threeDSecureRequiredResponse} from "../../../util/responses/worldpay"
 import type {WorldpayRequestDetails} from "../../../util/types/worldpay"
-import sendMessageToQueue from "../../../util/sendMessageToQueue"
+import sendMessageToQueue from "../../../util/queue/sendMessageToQueue"
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -21,7 +21,7 @@ const REQUEST_TYPE = {
   CAPTURE_ORDER: "capture"
 }
 
-const determineRequestDetails = (parsedRequestBody: any): WorldpayRequestDetails => {
+const extractRequest = (parsedRequestBody: any): WorldpayRequestDetails => {
   delete parsedRequestBody['?xml']
   // console.dir(parsedRequestBody, {depth: null})
   return {
@@ -44,14 +44,15 @@ const determineRequestDetails = (parsedRequestBody: any): WorldpayRequestDetails
 const buildXMLResponse = async (requestDetails: WorldpayRequestDetails, res: NextApiResponse) => {
 
   switch (requestDetails.getType()) {
-    case REQUEST_TYPE.AUTH_ORDER:
+    case REQUEST_TYPE.AUTH_ORDER: {
       console.log("AUTH_ORDER")
       res
         .status(200)
         .setHeader('Content-Type', 'text/xml')
         .send(authOrderResponse(requestDetails))
       break
-    case REQUEST_TYPE.CAPTURE_ORDER:
+    }
+    case REQUEST_TYPE.CAPTURE_ORDER: {
       console.log("CAPTURE_ORDER")
       // reply with capture confirm
       res
@@ -66,35 +67,40 @@ const buildXMLResponse = async (requestDetails: WorldpayRequestDetails, res: Nex
       }
       await sendMessageToQueue(messageBody)
       break
-    case REQUEST_TYPE.AUTH_3DS_REQUIRED_ORDER:
+    }
+    case REQUEST_TYPE.AUTH_3DS_REQUIRED_ORDER: {
       console.log("AUTH_3DS_REQUIRED_ORDER")
       res
         .status(200)
         .setHeader('Content-Type', 'text/xml')
         .send(threeDSecureRequiredResponse(requestDetails))
       break
-    case REQUEST_TYPE.AUTH_3DS_AUTHORISED_ORDER:
+    }
+    case REQUEST_TYPE.AUTH_3DS_AUTHORISED_ORDER: {
       console.log("AUTH_3DS_AUTHORISED_ORDER")
       res.status(501).json({ response: 'not implemented' })
       break
-    case REQUEST_TYPE.REFUND_ORDER:
+    }
+    case REQUEST_TYPE.REFUND_ORDER: {
       console.log("REFUND_ORDER")
-      res.status(501).json({ response: 'not implemented' })
+      res.status(501).json({response: 'not implemented'})
       break
-    default:
-      res.status(400).json({message: "Unknown request type"})
+    }
+    default: {
+      res.status(400).json({message: "unknown request type"})
+      }
   }
 }
 
 const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   // construct response
   // add capture confirmed notification to queue if capture submission
-  if (XMLValidator.validate(req.body, {allowBooleanAttributes: true})) {
-    const parsedRequestBody = parser.parse(req.body)
-    const requestDetails = determineRequestDetails(parsedRequestBody)
-    await buildXMLResponse(requestDetails, res)
-  } else {
-    res.status(400).json({message: "XML error"})
+  try {
+      const parsedRequestBody = parser.parse(req.body)
+      const requestDetails = extractRequest(parsedRequestBody)
+      await buildXMLResponse(requestDetails, res)
+  } catch (error) {
+    res.status(400).json({message: "bad request"})
   }
 }
 

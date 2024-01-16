@@ -13,10 +13,10 @@ const Stubs = (props: StubsProps) => {
   return (
     <div>
       <Head>
-        <title>GOV.UK Pay Stubs</title>
+        <title>Pay stubs</title>
         <link rel="shortcut icon" href="/images/favicon.ico" />
       </Head>
-      <Header serviceName={"Stubs"}/>
+      <Header serviceName={"Pay stubs"}/>
       <div className="govuk-width-container">
         <main className="govuk-main-wrapper">
           <Component {...pageProps} />

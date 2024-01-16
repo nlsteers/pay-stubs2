@@ -1,0 +1,5 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="next api debug" type="NodeJSConfigurationType" application-parameters="dev" path-to-js-file="node_modules/next/dist/bin/next" working-dir="$PROJECT_DIR$">
+    <method v="2" />
+  </configuration>
+</component>

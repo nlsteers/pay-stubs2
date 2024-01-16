@@ -1,8 +1,8 @@
 // function recursively searches a json object of unknown depth for a specified key, returns key value if found or undefined
 export default function findValueByKey(jsonObj: any, key: string): any {
   if (jsonObj instanceof Array) {
-    for (let i = 0; i < jsonObj.length; i++) {
-      const value = findValueByKey(jsonObj[i], key)
+    for (const element of jsonObj) {
+      const value = findValueByKey(element, key)
       if (value !== undefined) {
         return value
       }

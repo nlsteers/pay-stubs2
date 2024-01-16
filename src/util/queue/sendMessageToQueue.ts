@@ -16,9 +16,9 @@ export default async function sendMessageToQueue(messageBody: object) {
 
   try {
     await sqsClient.send(command).then((res) =>  {
-      console.log("Message sent:", res.MessageId)
+      console.log("queued message:", res.MessageId)
     })
   } catch (error) {
-    console.error("Error sending message:", error)
+    console.error("error queuing message:", error)
   }
 }

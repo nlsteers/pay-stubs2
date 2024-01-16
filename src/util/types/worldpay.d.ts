@@ -19,6 +19,16 @@ type WorldpayRequestDetails = {
   }
 }
 
+type WorldpayNotification = {
+  orderCode: string,
+  status: string,
+  merchantCode: string,
+  version: number,
+  amount: number,
+  cardHolderName: string
+}
+
 export type {
-  WorldpayRequestDetails
+  WorldpayRequestDetails,
+  WorldpayNotification
 }
